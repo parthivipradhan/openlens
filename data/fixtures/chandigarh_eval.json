@@ -1,0 +1,29 @@
+{
+  "benchmark_name": "Chandigarh Sector Evaluation Baseline v1",
+  "localities": [
+    {
+      "id": "loc_sector_17",
+      "name": "Sector 17",
+      "expected_high_category": "infrastructure",
+      "expected_challenges": ["traffic_congestion", "waterlogging_monsoon"]
+    },
+    {
+      "id": "loc_sector_22",
+      "name": "Sector 22",
+      "expected_high_category": "public_transport",
+      "expected_challenges": ["air_quality_seasonal"]
+    },
+    {
+      "id": "loc_sector_35",
+      "name": "Sector 35",
+      "expected_high_category": "healthcare",
+      "expected_challenges": ["parking_peak_hours"]
+    }
+  ],
+  "scoring_validation_rules": [
+    "No negative scores allowed",
+    "Weights must sum to 1.0 or normalize to 1.0",
+    "Missing category data must emit explicit warnings in response payload",
+    "Evidence citations must map to existing record IDs"
+  ]
+}

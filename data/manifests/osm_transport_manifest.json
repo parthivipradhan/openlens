@@ -1,0 +1,18 @@
+{
+  "manifest_version": "1.0",
+  "dataset_id": "osm-chandigarh-infrastructure",
+  "title": "OpenStreetMap Chandigarh Public Transport & Parks",
+  "publisher": "OpenStreetMap Contributors",
+  "source_url": "https://overpass-api.de/api/interpreter",
+  "license": "Open Database License (ODbL) 1.0",
+  "locality": "Chandigarh",
+  "records_count": 14,
+  "date_range": {
+    "start": "2023-01-01",
+    "end": "2024-06-30"
+  },
+  "canonical_schema_version": "localitylens-v1",
+  "root_hash_sha256": "8f31b2e652c7b5aa173ecfa2dc6d628eb41a18c6ea31ca92209d846df7bb0419",
+  "is_synthetic": false,
+  "published_at": "2024-07-01T00:00:00Z"
+}

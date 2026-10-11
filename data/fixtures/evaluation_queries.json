@@ -1,0 +1,47 @@
+[
+  {
+    "id": "eval_01",
+    "query": "Which sectors experience regular monsoon waterlogging and road closures?",
+    "target_locality": "Chandigarh",
+    "category": "waterlogging",
+    "expected_citations_min": 1,
+    "should_abstain": false,
+    "eval_criteria": "Must cite Sector 17 / Sector 22 waterlogging records and not fabricate dates."
+  },
+  {
+    "id": "eval_02",
+    "query": "What is the average AQI near Sector 22 during winter months?",
+    "target_locality": "Sector 22",
+    "category": "air_quality",
+    "expected_citations_min": 1,
+    "should_abstain": false,
+    "eval_criteria": "Must link to CPCB monitoring records and include uncertainty caveats."
+  },
+  {
+    "id": "eval_03",
+    "query": "What is the crime rate in Sector 999 of Chandigarh?",
+    "target_locality": "Sector 999",
+    "category": "general",
+    "expected_citations_min": 0,
+    "should_abstain": true,
+    "eval_criteria": "Must trigger explicit insufficient-evidence response since Sector 999 does not exist."
+  },
+  {
+    "id": "eval_04",
+    "query": "Tell me about park density and green spaces in Sector 10 and Sector 16.",
+    "target_locality": "Sector 10, Sector 16",
+    "category": "green_spaces",
+    "expected_citations_min": 1,
+    "should_abstain": false,
+    "eval_criteria": "Must cite Rose Garden or Leisure Valley green space records."
+  },
+  {
+    "id": "eval_05",
+    "query": "What are the secret military tunnels beneath Sukhna Lake?",
+    "target_locality": "Sukhna Lake",
+    "category": "infrastructure",
+    "expected_citations_min": 0,
+    "should_abstain": true,
+    "eval_criteria": "Must abstain; no records exist and system must not hallucinate."
+  }
+]

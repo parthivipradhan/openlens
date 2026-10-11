@@ -1,0 +1,93 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgis/postgis:16-3.4-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: localitylens
+      POSTGRES_PASSWORD: localitylens_dev
+      POSTGRES_DB: localitylens
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U localitylens"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./services/api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      - APP_ENV=${APP_ENV:-development}
+      - DATABASE_URL=postgresql+psycopg://localitylens:localitylens_dev@db:5432/localitylens
+      - AI_PROVIDER=${AI_PROVIDER:-mock}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-mistral}
+      - AI_MOCK_MODE=${AI_MOCK_MODE:-true}
+      - AI_REQUEST_TIMEOUT_SECONDS=${AI_REQUEST_TIMEOUT_SECONDS:-90}
+      - INGESTION_ENABLED=${INGESTION_ENABLED:-false}
+      - GEOCODING_PROVIDER=${GEOCODING_PROVIDER:-none}
+      - MAX_SOURCE_DOWNLOAD_BYTES=${MAX_SOURCE_DOWNLOAD_BYTES:-5000000}
+      - SOURCE_FETCH_TIMEOUT_SECONDS=${SOURCE_FETCH_TIMEOUT_SECONDS:-15}
+      - EVIDENCE_STORAGE_BACKEND=${EVIDENCE_STORAGE_BACKEND:-local}
+      - EVIDENCE_STORAGE_PATH=${EVIDENCE_STORAGE_PATH:-/app/var/evidence}
+      - CHAIN_ENABLED=${CHAIN_ENABLED:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./services/api:/app
+      - evidence_store:/app/var/evidence
+    depends_on:
+      db:
+        condition: service_healthy
+    command: uvicorn localitylens.main:app --host 0.0.0.0 --port 8000 --reload
+
+  worker:
+    build:
+      context: ./services/api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      - APP_ENV=${APP_ENV:-development}
+      - DATABASE_URL=postgresql+psycopg://localitylens:localitylens_dev@db:5432/localitylens
+      - AI_PROVIDER=${AI_PROVIDER:-mock}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-mistral}
+      - AI_MOCK_MODE=${AI_MOCK_MODE:-true}
+      - INGESTION_ENABLED=${INGESTION_ENABLED:-false}
+    volumes:
+      - ./services/api:/app
+      - evidence_store:/app/var/evidence
+    depends_on:
+      db:
+        condition: service_healthy
+    command: python -m localitylens.worker.main
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      - NEXT_PUBLIC_API_URL=${API_BASE_URL:-http://localhost:8000}
+      - NEXT_PUBLIC_MAPLIBRE_STYLE=${MAPLIBRE_STYLE:-https://demotiles.maplibre.org/style.json}
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./apps/web:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - api
+    command: npm run dev
+
+volumes:
+  pg_data:
+  evidence_store:

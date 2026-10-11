@@ -1,0 +1,18 @@
+{
+  "manifest_version": "1.0",
+  "dataset_id": "cpcb-aqi-chandigarh",
+  "title": "CPCB Chandigarh Ambient Air Quality Records",
+  "publisher": "Central Pollution Control Board (CPCB), India",
+  "source_url": "https://cpcb.nic.in/ambient-air-quality-data-chandigarh",
+  "license": "Government Open Data License - India (GODL)",
+  "locality": "Chandigarh",
+  "records_count": 8,
+  "date_range": {
+    "start": "2024-01-01",
+    "end": "2024-03-31"
+  },
+  "canonical_schema_version": "localitylens-v1",
+  "root_hash_sha256": "4b6e82c161394b9173ecfa2dc6d628eb41a18c6ea31ca92209d846df7bb04128",
+  "is_synthetic": false,
+  "published_at": "2024-04-01T00:00:00Z"
+}
