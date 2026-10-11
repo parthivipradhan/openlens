@@ -13,6 +13,9 @@ import {
   Map as MapIcon,
   Sparkles,
   Info,
+  Globe,
+  Sun,
+  Moon,
 } from "lucide-react";
 import { EvidenceRecord } from "../lib/types";
 import {
@@ -30,6 +33,164 @@ interface InteractiveMapProps {
   onCategoryToggle?: (cat: string) => void;
 }
 
+const DEFAULT_OSM_TILE_URL =
+  process.env.NEXT_PUBLIC_MAP_TILE_URL || "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+const ENV_STYLE = process.env.NEXT_PUBLIC_MAP_STYLE || "osm";
+const MAP_API_KEY = process.env.NEXT_PUBLIC_MAP_API_KEY || "";
+
+function getBasemapStyleDefinition(styleKey: string): any {
+  if (styleKey === "osm") {
+    return {
+      version: 8,
+      sources: {
+        "osm-tiles": {
+          type: "raster",
+          tiles: [
+            "https://a.tile.openstreetmap.org/{z}/{x}/{y}.png",
+            "https://b.tile.openstreetmap.org/{z}/{x}/{y}.png",
+            "https://c.tile.openstreetmap.org/{z}/{x}/{y}.png",
+          ],
+          tileSize: 256,
+          attribution:
+            '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors',
+        },
+      },
+      layers: [
+        {
+          id: "osm-layer",
+          type: "raster",
+          source: "osm-tiles",
+          minzoom: 0,
+          maxzoom: 19,
+        },
+      ],
+    };
+  }
+
+  if (styleKey === "carto-light") {
+    return {
+      version: 8,
+      sources: {
+        "carto-light": {
+          type: "raster",
+          tiles: [
+            "https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
+            "https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
+            "https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
+          ],
+          tileSize: 256,
+          attribution: "© OpenStreetMap contributors, © CARTO",
+        },
+      },
+      layers: [
+        {
+          id: "carto-light-layer",
+          type: "raster",
+          source: "carto-light",
+          minzoom: 0,
+          maxzoom: 19,
+        },
+      ],
+    };
+  }
+
+  if (styleKey === "custom" || ENV_STYLE.startsWith("http://") || ENV_STYLE.startsWith("https://")) {
+    let url = ENV_STYLE;
+    if (MAP_API_KEY && url.includes("{API_KEY}")) {
+      url = url.replace("{API_KEY}", MAP_API_KEY);
+    } else if (MAP_API_KEY && !url.includes("key=")) {
+      url += (url.includes("?") ? "&" : "?") + `key=${MAP_API_KEY}`;
+    }
+    return url;
+  }
+
+  // Fallback to Carto Dark
+  return {
+    version: 8,
+    sources: {
+      "carto-dark": {
+        type: "raster",
+        tiles: [
+          "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
+          "https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
+          "https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
+        ],
+        tileSize: 256,
+        attribution: "© OpenStreetMap contributors, © CARTO",
+      },
+    },
+    layers: [
+      {
+        id: "carto-dark-layer",
+        type: "raster",
+        source: "carto-dark",
+        minzoom: 0,
+        maxzoom: 19,
+      },
+    ],
+  };
+}
+
+function setupSectorLayers(map: any, boundariesVisible: boolean) {
+  if (!map) return;
+  try {
+    if (!map.getSource("chandigarh-sectors")) {
+      map.addSource("chandigarh-sectors", {
+        type: "geojson",
+        data: {
+          type: "FeatureCollection",
+          features: CHANDIGARH_SECTOR_BOUNDARIES.map((sec) => ({
+            type: "Feature",
+            properties: { name: sec.name, type: sec.type },
+            geometry: {
+              type: "Polygon",
+              coordinates: sec.coordinates,
+            },
+          })),
+        },
+      });
+    }
+
+    if (!map.getLayer("sectors-fill")) {
+      map.addLayer({
+        id: "sectors-fill",
+        type: "fill",
+        source: "chandigarh-sectors",
+        layout: {
+          visibility: boundariesVisible ? "visible" : "none",
+        },
+        paint: {
+          "fill-color": "#0ea5e9",
+          "fill-opacity": 0.12,
+        },
+      });
+    } else {
+      map.setLayoutProperty("sectors-fill", "visibility", boundariesVisible ? "visible" : "none");
+    }
+
+    if (!map.getLayer("sectors-line")) {
+      map.addLayer({
+        id: "sectors-line",
+        type: "line",
+        source: "chandigarh-sectors",
+        layout: {
+          visibility: boundariesVisible ? "visible" : "none",
+        },
+        paint: {
+          "line-color": "#0284c7",
+          "line-width": 2,
+          "line-dasharray": [2, 2],
+          "line-opacity": 0.75,
+        },
+      });
+    } else {
+      map.setLayoutProperty("sectors-line", "visibility", boundariesVisible ? "visible" : "none");
+    }
+  } catch (err) {
+    console.debug("setupSectorLayers notice:", err);
+  }
+}
+
 export function InteractiveMap({
   evidenceList,
   onSelectRecord,
@@ -40,6 +201,16 @@ export function InteractiveMap({
   const mapInstanceRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
 
+  const initialBasemap =
+    ENV_STYLE === "osm" ||
+    ENV_STYLE === "carto-dark" ||
+    ENV_STYLE === "carto-light"
+      ? ENV_STYLE
+      : ENV_STYLE.startsWith("http")
+      ? "custom"
+      : "osm";
+
+  const [selectedBasemap, setSelectedBasemap] = useState<string>(initialBasemap);
   const [activeLayers, setActiveLayers] = useState<Record<string, boolean>>({
     waterlogging: true,
     air_quality: true,
@@ -56,7 +227,6 @@ export function InteractiveMap({
   const [showUncertainty, setShowUncertainty] = useState(true);
   const [selectedHoverRecord, setSelectedHoverRecord] = useState<EvidenceRecord | null>(null);
   const [activeView, setActiveView] = useState<"map" | "list">("map");
-  const [temporalRange, setTemporalRange] = useState<number>(100); // 0 to 100% of date range
   const [isMapLoaded, setIsMapLoaded] = useState(false);
 
   // Filter evidence based on layer toggles and temporal filter
@@ -81,84 +251,29 @@ export function InteractiveMap({
 
         if (!mapContainerRef.current) return;
 
-        // Dark Matter basemap style (free, fast, beautiful CartoDB raster tiles)
+        const initialStyle = getBasemapStyleDefinition(selectedBasemap);
+
         const map = new maplibre.Map({
           container: mapContainerRef.current,
-          style: {
-            version: 8,
-            sources: {
-              "carto-dark": {
-                type: "raster",
-                tiles: [
-                  "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
-                  "https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
-                  "https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
-                ],
-                tileSize: 256,
-                attribution: "© OpenStreetMap contributors, © CARTO",
-              },
-            },
-            layers: [
-              {
-                id: "carto-dark-layer",
-                type: "raster",
-                source: "carto-dark",
-                minzoom: 0,
-                maxzoom: 19,
-              },
-            ],
-          },
+          style: initialStyle,
           center: CHANDIGARH_CENTER,
           zoom: 12.2,
-          pitch: 30,
+          pitch: 0,
         });
 
-        map.addControl(new maplibre.NavigationControl({ showCompass: false }), "top-right");
+        map.addControl(new maplibre.NavigationControl({ showCompass: true }), "top-right");
+
+        const handleStyleLoad = () => {
+          setupSectorLayers(map, showBoundaries);
+        };
 
         map.on("load", () => {
           mapInstanceRef.current = map;
           setIsMapLoaded(true);
-
-          // Add Sector Boundary Polygons
-          map.addSource("chandigarh-sectors", {
-            type: "geojson",
-            data: {
-              type: "FeatureCollection",
-              features: CHANDIGARH_SECTOR_BOUNDARIES.map((sec) => ({
-                type: "Feature",
-                properties: { name: sec.name, type: sec.type },
-                geometry: {
-                  type: "Polygon",
-                  coordinates: sec.coordinates,
-                },
-              })),
-            },
-          });
-
-          // Sector fill layer
-          map.addLayer({
-            id: "sectors-fill",
-            type: "fill",
-            source: "chandigarh-sectors",
-            paint: {
-              "fill-color": "#0ea5e9",
-              "fill-opacity": 0.08,
-            },
-          });
-
-          // Sector stroke line layer
-          map.addLayer({
-            id: "sectors-line",
-            type: "line",
-            source: "chandigarh-sectors",
-            paint: {
-              "line-color": "#38bdf8",
-              "line-width": 1.5,
-              "line-dasharray": [2, 2],
-              "line-opacity": 0.6,
-            },
-          });
+          setupSectorLayers(map, showBoundaries);
         });
+
+        map.on("style.load", handleStyleLoad);
       } catch (err) {
         console.warn("MapLibre GL failed to initialize:", err);
       }
@@ -190,7 +305,6 @@ export function InteractiveMap({
       filteredEvidence.forEach((record) => {
         const coords = getCoordinatesForEvidence(record.id);
         const color = CATEGORY_COLORS[record.category] || "#06b6d4";
-        const uncertainty = getUncertaintyRadiusMeters(record.geocoding_precision);
 
         // Marker DOM container
         const el = document.createElement("div");
@@ -200,7 +314,7 @@ export function InteractiveMap({
         if (showUncertainty) {
           const halo = document.createElement("div");
           halo.className =
-            "absolute -inset-3 rounded-full opacity-20 pointer-events-none transition-all duration-300 group-hover:scale-150 group-hover:opacity-40 animate-pulse";
+            "absolute -inset-3 rounded-full opacity-25 pointer-events-none transition-all duration-300 group-hover:scale-150 group-hover:opacity-45 animate-pulse";
           halo.style.backgroundColor = color;
           el.appendChild(halo);
         }
@@ -247,6 +361,14 @@ export function InteractiveMap({
     }
   }, [showBoundaries, isMapLoaded]);
 
+  const handleBasemapChange = (newStyleKey: string) => {
+    setSelectedBasemap(newStyleKey);
+    const map = mapInstanceRef.current;
+    if (!map) return;
+    const styleDef = getBasemapStyleDefinition(newStyleKey);
+    map.setStyle(styleDef);
+  };
+
   const toggleLayer = (cat: string) => {
     setActiveLayers((prev) => ({
       ...prev,
@@ -254,9 +376,11 @@ export function InteractiveMap({
     }));
   };
 
+  const hasCustomStyle = ENV_STYLE.startsWith("http://") || ENV_STYLE.startsWith("https://");
+
   return (
     <div className="space-y-4">
-      {/* Top Map Header & View Toggle (Map vs Accessible List) */}
+      {/* Top Map Header & Controls */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-bold text-white flex items-center gap-2">
@@ -268,8 +392,62 @@ export function InteractiveMap({
           </p>
         </div>
 
-        {/* View Switcher: Map vs Accessible List */}
-        <div className="flex items-center gap-2">
+        {/* Basemap Picker & View Switcher */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Basemap Selector */}
+          <div className="flex items-center rounded-xl bg-slate-900 border border-slate-800 p-1 text-xs shadow-inner">
+            <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold px-2 hidden md:inline">
+              Style:
+            </span>
+            <button
+              onClick={() => handleBasemapChange("osm")}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                selectedBasemap === "osm"
+                  ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm"
+                  : "text-slate-400 hover:text-white"
+              }`}
+              title="OpenStreetMap Standard (Free, public street tiles - No watermark)"
+            >
+              <span>🗺️ OSM Street</span>
+            </button>
+            <button
+              onClick={() => handleBasemapChange("carto-dark")}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                selectedBasemap === "carto-dark"
+                  ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm"
+                  : "text-slate-400 hover:text-white"
+              }`}
+              title="Carto Dark"
+            >
+              <span>🌙 Dark</span>
+            </button>
+            <button
+              onClick={() => handleBasemapChange("carto-light")}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                selectedBasemap === "carto-light"
+                  ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm"
+                  : "text-slate-400 hover:text-white"
+              }`}
+              title="Carto Light"
+            >
+              <span>☀️ Light</span>
+            </button>
+            {hasCustomStyle && (
+              <button
+                onClick={() => handleBasemapChange("custom")}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                  selectedBasemap === "custom"
+                    ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm"
+                    : "text-slate-400 hover:text-white"
+                }`}
+                title="Custom Style from NEXT_PUBLIC_MAP_STYLE"
+              >
+                <span>⚡ Custom</span>
+              </button>
+            )}
+          </div>
+
+          {/* View Switcher: Map vs Accessible List */}
           <div className="flex items-center rounded-xl bg-slate-900 border border-slate-800 p-1">
             <button
               onClick={() => setActiveView("map")}
@@ -391,9 +569,21 @@ export function InteractiveMap({
           )}
 
           {/* Legend Chip in bottom right */}
-          <div className="absolute bottom-4 right-4 z-10 glass-panel rounded-xl px-3 py-1.5 border border-slate-800 text-[10px] text-slate-400 flex items-center gap-2">
-            <span className="inline-block w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-            <span>MapLibre GL JS • EPSG:3857 / WGS-84</span>
+          <div className="absolute bottom-4 right-4 z-10 glass-panel rounded-xl px-3 py-1.5 border border-slate-800 text-[10px] text-slate-300 flex items-center gap-2 shadow-lg">
+            <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span>
+              {selectedBasemap === "osm"
+                ? "OpenStreetMap (Standard Tiles)"
+                : selectedBasemap === "carto-dark"
+                ? "Carto Dark"
+                : selectedBasemap === "carto-light"
+                ? "Carto Light"
+                : "Custom Tiles"}{" "}
+              • EPSG:3857
+            </span>
+            <span className="text-emerald-400 font-mono text-[9px] bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
+              Live
+            </span>
           </div>
         </div>
       ) : (
